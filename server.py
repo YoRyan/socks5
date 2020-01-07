@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import ipaddress as ip
 import logging
 import select
@@ -102,11 +103,19 @@ class IPv6ForkingTCPServer(ForkingTCPServer):
     def server_bind(self):
         if isinstance(ip.ip_address(self.server_address[0]), ip.IPv6Address):
             self.socket = socket.socket(socket.AF_INET6, self.socket_type)
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         ForkingTCPServer.server_bind(self)
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(
+        description='A toy SOCKS 5 server with IPv6 and multihoming support.')
+    parser.add_argument('addr', help='listen address')
+    parser.add_argument('port', type=int, help='listen port')
+    parser.add_argument('-b', '--bind-addr', metavar='IP', default='',
+                        help='when proxying, use this source address')
+    args = parser.parse_args()
+
     myproxy = SocksProxy
-    with IPv6ForkingTCPServer(('::1', 9011), myproxy) as server:
+    myproxy.source_address = (args.bind_addr, 0)
+    with IPv6ForkingTCPServer((args.addr, args.port), myproxy) as server:
         server.serve_forever()
