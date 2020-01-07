@@ -1,21 +1,16 @@
+#!/usr/bin/env python3
+
 import logging
 import select
 import socket
 import struct
-from socketserver import ThreadingMixIn, TCPServer, StreamRequestHandler
+from socketserver import ThreadingTCPServer, StreamRequestHandler
 
 logging.basicConfig(level=logging.DEBUG)
 SOCKS_VERSION = 5
 
 
-class ThreadingTCPServer(ThreadingMixIn, TCPServer):
-    pass
-
-
 class SocksProxy(StreamRequestHandler):
-    username = 'username'
-    password = 'password'
-
     def handle(self):
         logging.info('Accepting connection from %s:%s' % self.client_address)
 
@@ -26,22 +21,12 @@ class SocksProxy(StreamRequestHandler):
 
         # socks 5
         assert version == SOCKS_VERSION
-        assert nmethods > 0
 
         # get available methods
         methods = self.get_available_methods(nmethods)
 
-        # accept only USERNAME/PASSWORD auth
-        if 2 not in set(methods):
-            # close connection
-            self.server.close_request(self.request)
-            return
-
         # send welcome message
-        self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 2))
-
-        if not self.verify_credentials():
-            return
+        self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 0))
 
         # request
         version, cmd, _, address_type = struct.unpack("!BBBB", self.connection.recv(4))
@@ -88,28 +73,6 @@ class SocksProxy(StreamRequestHandler):
         for i in range(n):
             methods.append(ord(self.connection.recv(1)))
         return methods
-
-    def verify_credentials(self):
-        version = ord(self.connection.recv(1))
-        assert version == 1
-
-        username_len = ord(self.connection.recv(1))
-        username = self.connection.recv(username_len).decode('utf-8')
-
-        password_len = ord(self.connection.recv(1))
-        password = self.connection.recv(password_len).decode('utf-8')
-
-        if username == self.username and password == self.password:
-            # success, status = 0
-            response = struct.pack("!BB", version, 0)
-            self.connection.sendall(response)
-            return True
-
-        # failure, status != 0
-        response = struct.pack("!BB", version, 0xFF)
-        self.connection.sendall(response)
-        self.server.close_request(self.request)
-        return False
 
     def generate_failed_reply(self, address_type, error_number):
         return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
