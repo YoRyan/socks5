@@ -48,7 +48,7 @@ class SocksProxy(StreamRequestHandler):
         elif address_type == AddressType.V6:  # IPv6
             address = str(ip.IPv6Address(self.connection.recv(16)))
         elif address_type == AddressType.DOMAIN:  # Domain name
-            domain_length = ord(self.connection.recv(1)[0])
+            domain_length = self.connection.recv(1)[0]
             address = self.connection.recv(domain_length)
 
         port = struct.unpack('!H', self.connection.recv(2))[0]
