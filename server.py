@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
+import ipaddress as ip
 import logging
 import select
 import socket
 import struct
-from socketserver import ThreadingTCPServer, StreamRequestHandler
+from socketserver import ForkingTCPServer, StreamRequestHandler
 
 logging.basicConfig(level=logging.DEBUG)
 SOCKS_VERSION = 5
@@ -12,7 +13,7 @@ SOCKS_VERSION = 5
 
 class SocksProxy(StreamRequestHandler):
     def handle(self):
-        logging.info('Accepting connection from %s:%s' % self.client_address)
+        logging.info('Accepting connection from %s:%s' % self.client_address[:2])
 
         # greeting header
         # read and unpack 2 bytes from a client
@@ -95,6 +96,14 @@ class SocksProxy(StreamRequestHandler):
                     break
 
 
+class IPv6ForkingTCPServer(ForkingTCPServer):
+    def server_bind(self):
+        if isinstance(ip.ip_address(self.server_address[0]), ip.IPv6Address):
+            self.socket = socket.socket(socket.AF_INET6, self.socket_type)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        ForkingTCPServer.server_bind(self)
+
+
 if __name__ == '__main__':
-    with ThreadingTCPServer(('127.0.0.1', 9011), SocksProxy) as server:
+    with IPv6ForkingTCPServer(('::1', 9011), SocksProxy) as server:
         server.serve_forever()
