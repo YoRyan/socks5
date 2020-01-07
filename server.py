@@ -12,6 +12,8 @@ SOCKS_VERSION = 5
 
 
 class SocksProxy(StreamRequestHandler):
+    source_address = ('', 0)
+
     def handle(self):
         logging.info('Accepting connection from %s:%s' % self.client_address[:2])
 
@@ -44,8 +46,8 @@ class SocksProxy(StreamRequestHandler):
         # reply
         try:
             if cmd == 1:  # CONNECT
-                remote = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                remote.connect((address, port))
+                remote = socket.create_connection(
+                    (address, port), source_address=self.source_address)
                 bind_address = remote.getsockname()
                 logging.info('Connected to %s %s' % (address, port))
             else:
@@ -105,5 +107,6 @@ class IPv6ForkingTCPServer(ForkingTCPServer):
 
 
 if __name__ == '__main__':
-    with IPv6ForkingTCPServer(('::1', 9011), SocksProxy) as server:
+    myproxy = SocksProxy
+    with IPv6ForkingTCPServer(('::1', 9011), myproxy) as server:
         server.serve_forever()
