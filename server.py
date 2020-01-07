@@ -6,10 +6,16 @@ import logging
 import select
 import socket
 import struct
+from enum import IntEnum
 from socketserver import ForkingTCPServer, StreamRequestHandler
 
 logging.basicConfig(level=logging.DEBUG)
 SOCKS_VERSION = 5
+
+class AddressType(IntEnum):
+    V4 = 1
+    DOMAIN = 3
+    V6 = 4
 
 
 class SocksProxy(StreamRequestHandler):
@@ -33,12 +39,15 @@ class SocksProxy(StreamRequestHandler):
         self.connection.sendall(struct.pack("!BB", SOCKS_VERSION, 0))
 
         # request
-        version, cmd, _, address_type = struct.unpack("!BBBB", self.connection.recv(4))
+        version, cmd, _, atype = struct.unpack("!BBBB", self.connection.recv(4))
         assert version == SOCKS_VERSION
 
-        if address_type == 1:  # IPv4
-            address = socket.inet_ntoa(self.connection.recv(4))
-        elif address_type == 3:  # Domain name
+        address_type = AddressType(atype)
+        if address_type == AddressType.V4:  # IPv4
+            address = str(ip.IPv4Address(self.connection.recv(4)))
+        elif address_type == AddressType.V6:  # IPv6
+            address = str(ip.IPv6Address(self.connection.recv(16)))
+        elif address_type == AddressType.DOMAIN:  # Domain name
             domain_length = ord(self.connection.recv(1)[0])
             address = self.connection.recv(domain_length)
 
@@ -54,10 +63,14 @@ class SocksProxy(StreamRequestHandler):
             else:
                 self.server.close_request(self.request)
 
-            addr = struct.unpack("!I", socket.inet_aton(bind_address[0]))[0]
+            addr = ip.ip_address(bind_address[0])
             port = bind_address[1]
-            reply = struct.pack("!BBBBIH", SOCKS_VERSION, 0, 0, address_type,
-                                addr, port)
+            if isinstance(addr, ip.IPv4Address):
+                reply = struct.pack("!BBBB4sH", SOCKS_VERSION, 0, 0,
+                                    AddressType.V4.value, addr.packed, port)
+            elif isinstance(addr, ip.IPv6Address):
+                reply = struct.pack("!BBBB16sH", SOCKS_VERSION, 0, 0,
+                                    AddressType.V6.value, addr.packed, port)
 
         except Exception as err:
             logging.error(err)
@@ -79,7 +92,8 @@ class SocksProxy(StreamRequestHandler):
         return methods
 
     def generate_failed_reply(self, address_type, error_number):
-        return struct.pack("!BBBBIH", SOCKS_VERSION, error_number, 0, address_type, 0, 0)
+        return struct.pack("!BBBBIH", SOCKS_VERSION, error_number,
+                           0, address_type.value, 0, 0)
 
     def exchange_loop(self, client, remote):
 
